@@ -18,10 +18,10 @@
  */
 package org.apache.syncope.core.logic.scim;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.syncope.common.lib.scim.SCIMComplexConf;
 import org.apache.syncope.common.lib.scim.SCIMConf;
@@ -123,6 +123,15 @@ public class SearchCondVisitor extends SCIMFilterBaseVisitor<SearchCond> {
                         attrCond.setSchema(conf.getEnterpriseUserConf().getManager().getKey());
                     }
                 }
+
+                if (conf.getExtensionUserConf() != null) {
+                    for (Map.Entry<String, String> entry : conf.getExtensionUserConf().asMap().entrySet()) {
+                        if (schemaEquals(Resource.ExtensionUser, entry.getKey(), schema)) {
+                            attrCond = new AttrCond();
+                            attrCond.setSchema(entry.getValue());
+                        }
+                    }
+                }
                 break;
 
             case Group:
@@ -197,7 +206,7 @@ public class SearchCondVisitor extends SCIMFilterBaseVisitor<SearchCond> {
     private <E extends Enum<?>> SearchCond complex(
             final String operator, final String left, final String right, final List<SCIMComplexConf<E>> items) {
 
-        if (left.endsWith(".type")) {
+        if (left.endsWith(".type") && "eq".equals(operator)) {
             Optional<SCIMComplexConf<E>> item = items.stream().
                     filter(object -> object.getType().name().equals(StringUtils.strip(right, "\""))).findFirst();
             if (item.isPresent()) {
@@ -206,16 +215,15 @@ public class SearchCondVisitor extends SCIMFilterBaseVisitor<SearchCond> {
                 attrCond.setType(AttrCond.Type.ISNOTNULL);
                 return SearchCond.getLeaf(attrCond);
             }
-        } else if (!conf.getUserConf().getEmails().isEmpty()
-                && (MULTIVALUE.contains(left) || left.endsWith(".value"))) {
-
-            List<SearchCond> orConds = new ArrayList<>();
-            items.forEach(item -> {
-                AttrCond cond = new AttrCond();
-                cond.setSchema(item.getValue());
-                cond.setExpression(StringUtils.strip(right, "\""));
-                orConds.add(setOperator(cond, operator));
-            });
+        } else if (MULTIVALUE.contains(left) || left.endsWith(".value")) {
+            List<SearchCond> orConds = items.stream().
+                    filter(item -> item.getValue() != null).
+                    map(item -> {
+                        AttrCond cond = new AttrCond();
+                        cond.setSchema(item.getValue());
+                        cond.setExpression(StringUtils.strip(right, "\""));
+                        return setOperator(cond, operator);
+                    }).collect(Collectors.toList());
             if (!orConds.isEmpty()) {
                 return SearchCond.getOr(orConds);
             }
@@ -236,16 +244,15 @@ public class SearchCondVisitor extends SCIMFilterBaseVisitor<SearchCond> {
                 attrCond.setType(AttrCond.Type.ISNOTNULL);
                 return SearchCond.getLeaf(attrCond);
             }
-        } else if (!conf.getUserConf().getEmails().isEmpty()
-                && (MULTIVALUE.contains(left) || left.endsWith(".value"))) {
-
-            List<SearchCond> orConds = new ArrayList<>();
-            items.forEach(item -> {
-                AttrCond cond = new AttrCond();
-                cond.setSchema(item.getFormatted());
-                cond.setExpression(StringUtils.strip(right, "\""));
-                orConds.add(setOperator(cond, operator));
-            });
+        } else if (MULTIVALUE.contains(left) || left.endsWith(".value")) {
+            List<SearchCond> orConds = items.stream().
+                    filter(item -> item.getFormatted() != null).
+                    map(item -> {
+                        AttrCond cond = new AttrCond();
+                        cond.setSchema(item.getFormatted());
+                        cond.setExpression(StringUtils.strip(right, "\""));
+                        return setOperator(cond, operator);
+                    }).collect(Collectors.toList());
             if (!orConds.isEmpty()) {
                 return SearchCond.getOr(orConds);
             }
