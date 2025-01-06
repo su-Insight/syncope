@@ -25,7 +25,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -40,7 +39,6 @@ import org.apache.openjpa.persistence.OpenJPAEntityManagerFactorySPI;
 import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.SyncopeConstants;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
-import org.apache.syncope.common.lib.types.AttrSchemaType;
 import org.apache.syncope.common.lib.types.ClientExceptionType;
 import org.apache.syncope.common.rest.api.service.JAXRSService;
 import org.apache.syncope.core.persistence.api.attrvalue.PlainAttrValidationManager;
@@ -479,12 +477,11 @@ public class JPAAnySearchDAO extends AbstractAnySearchDAO {
 
                     parseOrderByForField(svs, item, fieldName, clause);
                 } else {
-                    Optional<? extends PlainSchema> schema = plainSchemaDAO.findById(clause.getProperty());
-                    if (schema.isPresent()) {
-                        if (schema.get().isUniqueConstraint()) {
-                            orderByUniquePlainSchemas.add(schema.get().getKey());
+                    plainSchemaDAO.findById(clause.getProperty()).ifPresent(schema -> {
+                        if (schema.isUniqueConstraint()) {
+                            orderByUniquePlainSchemas.add(schema.getKey());
                         } else {
-                            orderByNonUniquePlainSchemas.add(schema.get().getKey());
+                            orderByNonUniquePlainSchemas.add(schema.getKey());
                         }
                         if (orderByUniquePlainSchemas.size() > 1 || orderByNonUniquePlainSchemas.size() > 1) {
                             SyncopeClientException invalidSearch =
@@ -494,8 +491,8 @@ public class JPAAnySearchDAO extends AbstractAnySearchDAO {
                                     ? orderByUniquePlainSchemas : orderByNonUniquePlainSchemas));
                             throw invalidSearch;
                         }
-                        parseOrderByForPlainSchema(svs, obs, item, clause, schema.get(), clause.getProperty());
-                    }
+                        parseOrderByForPlainSchema(svs, obs, item, clause, schema, clause.getProperty());
+                    });
                 }
             }
 
@@ -949,7 +946,7 @@ public class JPAAnySearchDAO extends AbstractAnySearchDAO {
             boolean ignoreCase = AttrCond.Type.ILIKE == cond.getType() || AttrCond.Type.IEQ == cond.getType();
 
             String column = (cond instanceof AnyCond) ? cond.getSchema() : key(schema.getType());
-            if ((schema.getType() == AttrSchemaType.String || schema.getType() == AttrSchemaType.Enum) && ignoreCase) {
+            if (schema.getType().isStringClass() && ignoreCase) {
                 column = "LOWER (" + column + ')';
             }
             if (!(cond instanceof AnyCond)) {
@@ -969,7 +966,7 @@ public class JPAAnySearchDAO extends AbstractAnySearchDAO {
                             : " IS NOT NULL");
 
                 case ILIKE, LIKE -> {
-                    if (schema.getType() == AttrSchemaType.String || schema.getType() == AttrSchemaType.Enum) {
+                    if (schema.getType().isStringClass()) {
                         query.append(column);
                         if (not) {
                             query.append(" NOT ");
@@ -1000,8 +997,7 @@ public class JPAAnySearchDAO extends AbstractAnySearchDAO {
                     } else {
                         query.append('=');
                     }
-                    if ((schema.getType() == AttrSchemaType.String
-                            || schema.getType() == AttrSchemaType.Enum) && ignoreCase) {
+                    if (schema.getType().isStringClass() && ignoreCase) {
                         query.append("LOWER(?").append(setParameter(parameters, attrValue.getValue())).append(')');
                     } else {
                         query.append('?').append(setParameter(parameters, attrValue.getValue()));
