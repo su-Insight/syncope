@@ -124,23 +124,26 @@ public class SchedTaskWizardBuilder<T extends SchedTaskTO> extends BaseAjaxWizar
                 getResult().stream().map(RealmTO::getFullPath).collect(Collectors.toList());
     }
 
-    public class Profile extends WizardStep {
+    protected class Profile extends WizardStep {
 
         private static final long serialVersionUID = -3043839139187792810L;
 
-        private final IModel<List<String>> taskJobDelegates = SyncopeWebApplication.get().
+        protected final IModel<List<String>> taskJobDelegates = SyncopeWebApplication.get().
                 getImplementationInfoProvider().getTaskJobDelegates();
 
-        private final IModel<List<String>> reconFilterBuilders = SyncopeWebApplication.get().
+        protected final IModel<List<String>> reconFilterBuilders = SyncopeWebApplication.get().
                 getImplementationInfoProvider().getReconFilterBuilders();
 
-        private final IModel<List<String>> pullActions = SyncopeWebApplication.get().
+        protected final IModel<List<String>> macroActions = SyncopeWebApplication.get().
+                getImplementationInfoProvider().getMacroActions();
+
+        protected final IModel<List<String>> pullActions = SyncopeWebApplication.get().
                 getImplementationInfoProvider().getPullActions();
 
-        private final IModel<List<String>> pushActions = SyncopeWebApplication.get().
+        protected final IModel<List<String>> pushActions = SyncopeWebApplication.get().
                 getImplementationInfoProvider().getPushActions();
 
-        public Profile(final SchedTaskTO taskTO) {
+        protected Profile(final SchedTaskTO taskTO) {
             AjaxTextFieldPanel name = new AjaxTextFieldPanel(
                     Constants.NAME_FIELD_NAME, Constants.NAME_FIELD_NAME,
                     new PropertyModel<>(taskTO, Constants.NAME_FIELD_NAME),
@@ -176,9 +179,8 @@ public class SchedTaskWizardBuilder<T extends SchedTaskTO> extends BaseAjaxWizar
             WebMarkupContainer macroTaskSpecifics = new WebMarkupContainer("macroTaskSpecifics");
             add(macroTaskSpecifics.setRenderBodyOnly(true));
 
-            AjaxSearchFieldPanel realm =
-                    new AjaxSearchFieldPanel("realm", "realm",
-                            new PropertyModel<>(taskTO, "realm"), settings) {
+            AjaxSearchFieldPanel realm = new AjaxSearchFieldPanel(
+                    "realm", "realm", new PropertyModel<>(taskTO, "realm"), settings) {
 
                 private static final long serialVersionUID = -6390474600233486704L;
 
@@ -189,7 +191,6 @@ public class SchedTaskWizardBuilder<T extends SchedTaskTO> extends BaseAjaxWizar
                             : List.<String>of()).iterator();
                 }
             };
-
             if (taskTO instanceof MacroTaskTO) {
                 realm.addRequiredLabel();
                 if (StringUtils.isBlank(MacroTaskTO.class.cast(taskTO).getRealm())) {
@@ -198,6 +199,10 @@ public class SchedTaskWizardBuilder<T extends SchedTaskTO> extends BaseAjaxWizar
                 }
             }
             macroTaskSpecifics.add(realm);
+
+            macroTaskSpecifics.add(new AjaxDropDownChoicePanel<>(
+                    "macroActions", "macroActions", new PropertyModel<>(taskTO, "macroActions"), false).
+                    setChoices(macroActions));
 
             AjaxCheckBoxPanel continueOnError = new AjaxCheckBoxPanel(
                     "continueOnError", "continueOnError", new PropertyModel<>(taskTO, "continueOnError"), false);
@@ -243,10 +248,8 @@ public class SchedTaskWizardBuilder<T extends SchedTaskTO> extends BaseAjaxWizar
 
                 @Override
                 protected void onUpdate(final AjaxRequestTarget target) {
-                    reconFilterBuilder.setEnabled(
-                            pullMode.getModelObject() == PullMode.FILTERED_RECONCILIATION);
-                    reconFilterBuilder.setRequired(
-                            pullMode.getModelObject() == PullMode.FILTERED_RECONCILIATION);
+                    reconFilterBuilder.setEnabled(pullMode.getModelObject() == PullMode.FILTERED_RECONCILIATION);
+                    reconFilterBuilder.setRequired(pullMode.getModelObject() == PullMode.FILTERED_RECONCILIATION);
                     target.add(reconFilterBuilder);
                 }
             });
@@ -337,8 +340,7 @@ public class SchedTaskWizardBuilder<T extends SchedTaskTO> extends BaseAjaxWizar
             provisioningTaskSpecifics.add(matchingRule);
 
             AjaxDropDownChoicePanel<UnmatchingRule> unmatchingRule = new AjaxDropDownChoicePanel<>(
-                    "unmatchingRule", "unmatchingRule", new PropertyModel<>(taskTO, "unmatchingRule"),
-                    false);
+                    "unmatchingRule", "unmatchingRule", new PropertyModel<>(taskTO, "unmatchingRule"), false);
             unmatchingRule.setChoices(List.of(UnmatchingRule.values()));
             provisioningTaskSpecifics.add(unmatchingRule);
 
@@ -442,11 +444,11 @@ public class SchedTaskWizardBuilder<T extends SchedTaskTO> extends BaseAjaxWizar
         }
     }
 
-    public class Schedule extends WizardStep {
+    protected class Schedule extends WizardStep {
 
         private static final long serialVersionUID = -785981096328637758L;
 
-        public Schedule(final SchedTaskTO taskTO) {
+        protected Schedule(final SchedTaskTO taskTO) {
             crontabPanel = new CrontabPanel(
                     "schedule", new PropertyModel<>(taskTO, "cronExpression"), taskTO.getCronExpression());
             add(crontabPanel);
