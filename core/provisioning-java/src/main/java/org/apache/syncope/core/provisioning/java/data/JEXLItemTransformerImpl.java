@@ -96,13 +96,14 @@ public class JEXLItemTransformerImpl implements JEXLItemTransformer {
                 break;
 
             case Enum:
+            case Dropdown:
             case String:
             default:
                 oValue = value.getStringValue();
         }
         jexlContext.set("value", oValue);
 
-        Object tValue = JexlUtils.evaluate(propagationJEXL, jexlContext);
+        Object tValue = JexlUtils.evaluateExpr(propagationJEXL, jexlContext);
 
         value.setBinaryValue(null);
         value.setBooleanValue(null);
@@ -111,28 +112,28 @@ public class JEXLItemTransformerImpl implements JEXLItemTransformer {
         value.setLongValue(null);
         value.setStringValue(null);
 
-        if (tValue instanceof byte[]) {
-            value.setBinaryValue((byte[]) tValue);
+        if (tValue instanceof byte[] bs) {
+            value.setBinaryValue(bs);
             return AttrSchemaType.Binary;
         }
 
-        if (tValue instanceof Boolean) {
-            value.setBooleanValue((Boolean) tValue);
+        if (tValue instanceof Boolean aBoolean) {
+            value.setBooleanValue(aBoolean);
             return AttrSchemaType.Boolean;
         }
 
-        if (tValue instanceof OffsetDateTime) {
-            value.setDateValue((OffsetDateTime) tValue);
+        if (tValue instanceof OffsetDateTime offsetDateTime) {
+            value.setDateValue(offsetDateTime);
             return AttrSchemaType.Date;
         }
 
-        if (tValue instanceof Double) {
-            value.setDoubleValue((Double) tValue);
+        if (tValue instanceof Double aDouble) {
+            value.setDoubleValue(aDouble);
             return AttrSchemaType.Double;
         }
 
-        if (tValue instanceof Long) {
-            value.setLongValue((Long) tValue);
+        if (tValue instanceof Long aLong) {
+            value.setLongValue(aLong);
             return AttrSchemaType.Long;
         }
 
@@ -177,13 +178,13 @@ public class JEXLItemTransformerImpl implements JEXLItemTransformer {
                 JexlContext jexlContext = new MapContext();
                 jexlContext.set("value", value);
                 JexlUtils.addFieldsToContext(entityTO, jexlContext);
-                if (entityTO instanceof AnyTO) {
-                    JexlUtils.addAttrsToContext(((AnyTO) entityTO).getPlainAttrs(), jexlContext);
-                    JexlUtils.addAttrsToContext(((AnyTO) entityTO).getDerAttrs(), jexlContext);
-                    JexlUtils.addAttrsToContext(((AnyTO) entityTO).getVirAttrs(), jexlContext);
+                if (entityTO instanceof AnyTO anyTO) {
+                    JexlUtils.addAttrsToContext(anyTO.getPlainAttrs(), jexlContext);
+                    JexlUtils.addAttrsToContext(anyTO.getDerAttrs(), jexlContext);
+                    JexlUtils.addAttrsToContext(anyTO.getVirAttrs(), jexlContext);
                 }
 
-                newValues.add(JexlUtils.evaluate(pullJEXL, jexlContext));
+                newValues.add(JexlUtils.evaluateExpr(pullJEXL, jexlContext));
             });
 
             return newValues;

@@ -54,7 +54,9 @@ import org.apache.syncope.core.persistence.neo4j.entity.Neo4jNotification;
 import org.apache.syncope.core.persistence.neo4j.entity.Neo4jRealm;
 import org.apache.syncope.core.persistence.neo4j.entity.task.AbstractTask;
 import org.apache.syncope.core.persistence.neo4j.entity.task.Neo4jAnyTemplatePullTask;
+import org.apache.syncope.core.persistence.neo4j.entity.task.Neo4jFormPropertyDef;
 import org.apache.syncope.core.persistence.neo4j.entity.task.Neo4jMacroTask;
+import org.apache.syncope.core.persistence.neo4j.entity.task.Neo4jMacroTaskCommand;
 import org.apache.syncope.core.persistence.neo4j.entity.task.Neo4jNotificationTask;
 import org.apache.syncope.core.persistence.neo4j.entity.task.Neo4jPropagationTask;
 import org.apache.syncope.core.persistence.neo4j.entity.task.Neo4jPropagationTaskExec;
@@ -78,7 +80,7 @@ public class Neo4jTaskDAO extends AbstractDAO implements TaskDAO {
 
     protected static final Logger LOG = LoggerFactory.getLogger(TaskDAO.class);
 
-    protected static String execRelationship(final TaskType type) {
+    public static String execRelationship(final TaskType type) {
         String result = null;
 
         switch (type) {
@@ -277,7 +279,20 @@ public class Neo4jTaskDAO extends AbstractDAO implements TaskDAO {
         List<Pair<String, String>> relationships = new ArrayList<>();
         List<String> properties = new ArrayList<>();
 
-        relationships.add(Pair.of("OPTIONAL MATCH (n)-[]-(p:" + taskUtils.getTaskExecTable() + ")", null));
+        boolean optionalMatch = true;
+        if (anyTypeKind != null) {
+            properties.add("n.anyTypeKind = $anyTypeKind");
+            parameters.put("anyTypeKind", anyTypeKind.name());
+            optionalMatch = false;
+        }
+        if (entityKey != null) {
+            properties.add("n.entityKey = $entityKey");
+            parameters.put("entityKey", entityKey);
+            optionalMatch = false;
+        }
+
+        relationships.add(Pair.of(
+                (optionalMatch ? "OPTIONAL " : "") + "MATCH (n)-[]-(p:" + taskUtils.getTaskExecTable() + ")", null));
 
         if (resource != null) {
             relationships.add(Pair.of("MATCH (n)-[]-(e:" + Neo4jExternalResource.NODE + " {id: $eid})", null));
@@ -287,14 +302,7 @@ public class Neo4jTaskDAO extends AbstractDAO implements TaskDAO {
             relationships.add(Pair.of("MATCH (n)-[]-(s:" + Neo4jNotification.NODE + " {id: $nid})", null));
             parameters.put("nid", notification.getKey());
         }
-        if (anyTypeKind != null) {
-            properties.add("n.anyTypeKind = $anyTypeKind");
-            parameters.put("anyTypeKind", anyTypeKind.name());
-        }
-        if (entityKey != null) {
-            properties.add("n.entityKey = $entityKey");
-            parameters.put("entityKey", entityKey);
-        }
+
         if (type == TaskType.MACRO
                 && !AuthContextUtils.getUsername().equals(securityProperties.getAdminUser())) {
 
@@ -358,7 +366,7 @@ public class Neo4jTaskDAO extends AbstractDAO implements TaskDAO {
                 anyTypeKind,
                 entityKey,
                 parameters).
-                append(" RETURN COUNT(n)");
+                append(" RETURN COUNT(DISTINCT n)");
 
         return neo4jTemplate.count(query.toString(), parameters);
     }
@@ -426,7 +434,7 @@ public class Neo4jTaskDAO extends AbstractDAO implements TaskDAO {
                 entityKey,
                 parameters);
 
-        query.append(" RETURN n.id ");
+        query.append(" WITH n ");
 
         query.append(toOrderByStatement(taskUtils.getTaskEntity(), pageable.getSort().get()));
 
@@ -434,6 +442,8 @@ public class Neo4jTaskDAO extends AbstractDAO implements TaskDAO {
             query.append(" SKIP ").append(pageable.getPageSize() * pageable.getPageNumber()).
                     append(" LIMIT ").append(pageable.getPageSize());
         }
+
+        query.append(" RETURN DISTINCT n.id");
 
         return toList(neo4jClient.query(
                 query.toString()).bindAll(parameters).fetch().all(),
@@ -452,8 +462,6 @@ public class Neo4jTaskDAO extends AbstractDAO implements TaskDAO {
                 notificationTask.list2json();
             case Neo4jPushTask pushTask ->
                 pushTask.map2json();
-            case Neo4jMacroTask macroTask ->
-                macroTask.list2json();
             default -> {
             }
         }
@@ -497,18 +505,17 @@ public class Neo4jTaskDAO extends AbstractDAO implements TaskDAO {
                         Neo4jPushTask.PUSH_TASK_PUSH_ACTIONS_REL)));
             }
 
-            case Neo4jMacroTask macroTask -> {
-                macroTask.postSave();
-
-                neo4jTemplate.findById(macroTask.getKey(), Neo4jMacroTask.class).
-                        ifPresent(t -> t.getCommands().stream().filter(cmd -> !macroTask.getCommands().contains(cmd)).
-                        forEach(impl -> deleteRelationship(
-                        Neo4jMacroTask.NODE,
-                        Neo4jImplementation.NODE,
-                        macroTask.getKey(),
-                        impl.getKey(),
-                        Neo4jMacroTask.MACRO_TASK_COMMANDS_REL)));
-            }
+            case Neo4jMacroTask macroTask ->
+                neo4jTemplate.findById(macroTask.getKey(), Neo4jMacroTask.class).ifPresent(t -> {
+                    if (t.getMacroActions() != null && macroTask.getMacroActions() == null) {
+                        deleteRelationship(
+                                Neo4jMacroTask.NODE,
+                                Neo4jImplementation.NODE,
+                                macroTask.getKey(),
+                                t.getMacroActions().getKey(),
+                                Neo4jMacroTask.MACRO_TASK_MACRO_ACTIONS_REL);
+                    }
+                });
 
             default -> {
             }
@@ -529,10 +536,22 @@ public class Neo4jTaskDAO extends AbstractDAO implements TaskDAO {
 
     @Override
     public void delete(final Task<?> task) {
-        if (task instanceof PullTask pullTask) {
-            remediationDAO.findByPullTask(pullTask).forEach(remediation -> remediation.setPullTask(null));
-            pullTask.getTemplates().
-                    forEach(template -> neo4jTemplate.deleteById(template.getKey(), Neo4jAnyTemplatePullTask.class));
+        switch (task) {
+            case PullTask pullTask -> {
+                remediationDAO.findByPullTask(pullTask).forEach(remediation -> remediation.setPullTask(null));
+                pullTask.getTemplates().
+                        forEach(e -> neo4jTemplate.deleteById(e.getKey(), Neo4jAnyTemplatePullTask.class));
+            }
+
+            case MacroTask macroTask -> {
+                macroTask.getCommands().
+                        forEach(e -> neo4jTemplate.deleteById(e.getKey(), Neo4jMacroTaskCommand.class));
+                macroTask.getFormPropertyDefs().
+                        forEach(e -> neo4jTemplate.deleteById(e.getKey(), Neo4jFormPropertyDef.class));
+            }
+
+            default -> {
+            }
         }
 
         TaskUtils taskUtils = taskUtilsFactory.getInstance(task);
