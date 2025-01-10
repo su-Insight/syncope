@@ -18,10 +18,10 @@ name: "FIT WA SRA OIDC"
 
 on:
   push:
-    branches: ['master', 'pr-*']
+    branches: ['3_0_X', 'pr-*']
   pull_request:
     # The branches below must be a subset of the branches above
-    branches: [master]
+    branches: [3_0_X]
   schedule:
     - cron: '0 13 * * 4'
 
@@ -35,13 +35,13 @@ jobs:
     - name: Setup Java JDK
       uses: actions/setup-java@v4
       with:
-        distribution: 'temurin'
-        java-version: 21
+        distribution: 'zulu'
+        java-version: 11
     - name: Setup Maven
-      uses: stCarolas/setup-maven@v4.5
+      uses: stCarolas/setup-maven@v5
       with:
-        maven-version: 3.9.4
-    - uses: actions/cache@v3
+        maven-version: 3.9.6
+    - uses: actions/cache@v4
       with:
         path: ~/.m2/repository
         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
